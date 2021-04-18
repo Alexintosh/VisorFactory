@@ -311,4 +311,4 @@ task('visor-withdraw', 'Withdraw tokens from visor')
     )
 
     console.log('  in', withdrawTx.hash)
-  })
+})

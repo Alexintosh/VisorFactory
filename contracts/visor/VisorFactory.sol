@@ -18,7 +18,7 @@ contract VisorFactory is Ownable, IFactory, IInstanceRegistry, ERC721 {
     bytes32 public activeTemplate;
 
     mapping(address=>address[]) public userIndex;
-    
+
     event TemplateAdded(bytes32 indexed name, address indexed template);
     event TemplateActive(bytes32 indexed name, address indexed template);
 
@@ -28,7 +28,7 @@ contract VisorFactory is Ownable, IFactory, IInstanceRegistry, ERC721 {
         require(templates[name] == address(0), "Template already exists");
         templates[name] = template;
         if(names.length == 0) {
-          activeTemplate = name; 
+          activeTemplate = name;
           emit TemplateActive(name, template);
         }
         names.push(name);
@@ -94,7 +94,6 @@ contract VisorFactory is Ownable, IFactory, IInstanceRegistry, ERC721 {
         return vault;
     }
 
-
     function create(bytes calldata) external override returns (address vault) {
         return create();
     }
@@ -157,5 +156,4 @@ contract VisorFactory is Ownable, IFactory, IInstanceRegistry, ERC721 {
     function getTemplate() external view returns (address) {
         return templates[activeTemplate];
     }
-
 }
