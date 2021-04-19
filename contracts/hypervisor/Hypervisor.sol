@@ -2,6 +2,9 @@
 pragma solidity 0.7.6;
 pragma abicoder v2;
 
+import { IUniswapV3Pool } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+import { IUniswapV3Factory } from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+
 import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/EnumerableSet.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -239,6 +242,13 @@ contract Hypervisor is IHypervisor, Powered, Ownable {
     EnumerableSet.AddressSet private _bonusTokenSet;
     EnumerableSet.AddressSet private _vaultFactorySet;
 
+    address public immutable token0;
+    address public immutable token1;
+    uint24 public uniswapFee;
+    IUniswapV3Pool public pool;
+    int24 public lowerTick;
+    int24 public upperTick;
+
     /* initializer */
 
     /// @notice Initizalize Hypervisor
@@ -259,7 +269,9 @@ contract Hypervisor is IHypervisor, Powered, Ownable {
         address stakingToken,
         address rewardToken,
         RewardScaling memory rewardScaling,
-        uint256 _stakeLimit
+        uint256 _stakeLimit,
+        address _token0,
+        address _token1
     ) {
         // the scaling floor must be smaller than ceiling
         require(rewardScaling.floor <= rewardScaling.ceiling, "Hypervisor: floor above ceiling");
@@ -285,6 +297,9 @@ contract Hypervisor is IHypervisor, Powered, Ownable {
         _hypervisor.rewardScaling = rewardScaling;
 
         stakeLimit = _stakeLimit;
+
+        token0 = _token0;
+        token1 = _token1;
 
         // emit event
         emit HypervisorCreated(rewardPool, powerSwitch);
