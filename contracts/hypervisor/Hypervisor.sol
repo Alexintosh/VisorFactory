@@ -16,6 +16,7 @@ import {IInstanceRegistry} from "../factory/InstanceRegistry.sol";
 import {IUniversalVault} from "../visor/Visor.sol";
 import {IRewardPool} from "./RewardPool.sol";
 import {Powered} from "./Powered.sol";
+import { ERC20 } from "../ERC20.sol";
 
 interface IRageQuit {
     function rageQuit() external;
@@ -217,7 +218,7 @@ interface IHypervisor is IRageQuit {
 ///     Users can withdraw their stake through rageQuit()
 ///     Power controller can withdraw from the reward pool
 ///     Should only be used if Proxy Owner role is compromized
-contract Hypervisor is IHypervisor, Powered, Ownable {
+contract Hypervisor is IHypervisor, Powered, Ownable, ERC20 {
     using SafeMath for uint256;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -1109,4 +1110,16 @@ contract Hypervisor is IHypervisor, Powered, Ownable {
         }
         return newArray;
     }
+
+/*
+Liquidity Management
+*/
+
+  function mint(uint128 newLiquidity) external returns (uint256 mintAmount) {
+
+  }
+
+  function burn(uint256 burnAmount) external returns (uint256 amount0, uint256 amount1, uint128 liquidityBurned) {
+
+  }
 }
