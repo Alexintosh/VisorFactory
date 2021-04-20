@@ -1,6 +1,7 @@
 import { TypedDataField } from '@ethersproject/abstract-signer'
 import { BigNumberish, Contract, ContractFactory, Signer, Wallet } from 'ethers'
 import { splitSignature } from 'ethers/lib/utils'
+import { ethers } from 'hardhat';
 
 export async function deployContract(
   name: string,
@@ -13,6 +14,14 @@ export async function deployContract(
   console.log('  to', contract.address)
   console.log('  in', contract.deployTransaction.hash)
   return contract.deployed()
+}
+
+export async function increaseTime(
+   time: BigNumberish
+): Promise<void> {
+    await ethers.provider.send("evm_increaseTime", [time]);
+    await ethers.provider.send("evm_mine", []);
+    return Promise.resolve()
 }
 
 export const signPermission = async (

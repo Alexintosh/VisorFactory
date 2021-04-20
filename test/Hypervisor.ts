@@ -2,7 +2,7 @@ import { ethers } from 'hardhat';
 import { expect } from 'chai';
 import { constants, Wallet } from 'ethers';
 import { formatEther, parseUnits, randomBytes } from 'ethers/lib/utils'
-import { deployContract, signPermission, signPermitEIP2612 } from './utils'
+import { deployContract, signPermission, signPermitEIP2612, increaseTime } from './utils'
 
 const DAY = 60 * 60 * 24;
 
@@ -55,7 +55,10 @@ describe("Token contract", function() {
     const powerSwitchFactory = await PowerSwitchFactory.deploy();
 
     const Hypervisor = await ethers.getContractFactory("Hypervisor");
-    const hypervisor = await Hypervisor.deploy(owner.address, rewardPoolFactory.address, powerSwitchFactory.address, stakingToken.address, rewardToken.address, [0, 1000, 28 * DAY], 2500);
+    // TODO think about last two params here
+    const hypervisor = await Hypervisor.deploy(owner.address, rewardPoolFactory.address, powerSwitchFactory.address, stakingToken.address, rewardToken.address, [0, 1000, 28 * DAY], 2500, stakingToken.address, rewardToken.address);
+    //const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
+    //const _uniswapFactory = await UniswapV3Factory.deploy();
 
     // Fund Hypervisor
 
@@ -160,5 +163,13 @@ describe("Token contract", function() {
     expect(balanceLocked).to.equal(amount*2);
 
     await visor.rageQuit(hypervisor.address, stakingToken.address);
+
+    let bl = await ethers.provider.getBlockNumber();
+    console.log(bl);
+
+    await increaseTime(60)
+
+    bl = await ethers.provider.getBlockNumber();
+    console.log(bl);
   });
 });
