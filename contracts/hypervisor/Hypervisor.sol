@@ -1111,15 +1111,12 @@ contract Hypervisor is IHypervisor, Powered, Ownable, ERC20 {
         return newArray;
     }
 
-/*
-Liquidity Management
-*/
+    /* Liquidity Management */
+    function mint(uint128 newLiquidity) external returns (uint256 mintAmount) {
 
-  function mint(uint128 newLiquidity) external returns (uint256 mintAmount) {
+    }
 
-  }
+    function burn(uint256 burnAmount) external returns (uint256 amount0, uint256 amount1, uint128 liquidityBurned) {
 
-  function burn(uint256 burnAmount) external returns (uint256 amount0, uint256 amount1, uint128 liquidityBurned) {
-
-  }
+    }
 }
