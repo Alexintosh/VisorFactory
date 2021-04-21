@@ -1,17 +1,27 @@
 import { ethers } from 'hardhat';
 import { expect } from 'chai';
-import { constants, Wallet, BigNumberish } from 'ethers';
+import { constants, Wallet, BigNumberish, BigNumber } from 'ethers';
 import { formatEther, parseUnits, randomBytes } from 'ethers/lib/utils'
 import { deployContract, signPermission, signPermitEIP2612, increaseTime } from './utils'
 const bn = require('bignumber.js');
-
+/*
+// Uniswap's version
+function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish): BigNumber {
+  return BigNumber.from(
+    new bn(reserve1.toString())
+      .div(reserve0.toString())
+      .sqrt()
+      .multipliedBy(new bn(2).pow(96))
+      .integerValue(3)
+      .toString()
+  )
+}
+*/
 function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish) {
   return new bn(reserve1.toString())
               .div(reserve0.toString())
               .sqrt()
               .multipliedBy(new bn(2).pow(96))
-              .integerValue(3)
-              .toString()
 }
 
 describe("Supervisor", function() {
@@ -28,13 +38,16 @@ describe("Supervisor", function() {
 
     const UniswapV3Factory = await ethers.getContractFactory('UniswapV3Factory');
     const _uniswapFactory = await UniswapV3Factory.deploy();
-    let uniswapFactory = await ethers.getContractAt('IUniswapV3Factory', _uniswapFactory.address);
+    let uniswapFactory = await ethers.getContractAt('UniswapV3Factory', _uniswapFactory.address);
     await uniswapFactory.createPool(token0.address, token1.address, '3000');
     const uniswapPoolAddress = await uniswapFactory.getPool(token0.address, token1.address, '3000');
-    let uniswapPool = await ethers.getContractAt('IUniswapV3Pool', uniswapPoolAddress);
-    await uniswapPool.initialize(encodePriceSqrt('1', '1'));
+    let uniswapPool = await ethers.getContractAt('UniswapV3Pool', uniswapPoolAddress);
+
+    await uniswapPool.initialize((BigNumber.from(2)).pow(96));
 
     const Supervisor = await ethers.getContractFactory("Supervisor");
+    console.log(token0.address, token1.address, '3000', uniswapFactory.address)
+
     const supervisor = await Supervisor.deploy(token0.address, token1.address, '3000', uniswapFactory.address);
     expect(await supervisor.pool()).to.equal(uniswapPoolAddress);
   });
