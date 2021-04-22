@@ -50,5 +50,11 @@ describe("Supervisor", function() {
 
     const supervisor = await Supervisor.deploy(token0.address, token1.address, '3000', uniswapFactory.address);
     expect(await supervisor.pool()).to.equal(uniswapPoolAddress);
+
+    await token0.transfer(supervisor.address, 100000000);
+    await token1.transfer(supervisor.address, 100000000);
+
+    // add liquidity to pool
+    await uniswapPool.mint(owner.address, 10, 100, 1, supervisor.address)
   });
 });
