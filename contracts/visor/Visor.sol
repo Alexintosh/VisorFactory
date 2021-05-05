@@ -4,6 +4,10 @@ pragma abicoder v2;
 
 import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+
 import {Initializable} from "@openzeppelin/contracts/proxy/Initializable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/EnumerableSet.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -14,85 +18,8 @@ import {ERC1271} from "./ERC1271.sol";
 import {OwnableERC721} from "./OwnableERC721.sol";
 import {IRageQuit} from "../hypervisor/Hypervisor.sol";
 
-interface IUniversalVault {
-    /* user events */
-
-    event Locked(address delegate, address token, uint256 amount);
-    event Unlocked(address delegate, address token, uint256 amount);
-    event RageQuit(address delegate, address token, bool notified, string reason);
-
-    /* data types */
-
-    struct LockData {
-        address delegate;
-        address token;
-        uint256 balance;
-    }
-
-    /* initialize function */
-
-    function initialize() external;
-
-    /* user functions */
-
-    function lock(
-        address token,
-        uint256 amount,
-        bytes calldata permission
-    ) external;
-
-    function unlock(
-        address token,
-        uint256 amount,
-        bytes calldata permission
-    ) external;
-
-    function rageQuit(address delegate, address token)
-        external
-        returns (bool notified, string memory error);
-
-    function transferERC20(
-        address token,
-        address to,
-        uint256 amount
-    ) external;
-
-    function transferETH(address to, uint256 amount) external payable;
-
-    /* pure functions */
-
-    function calculateLockID(address delegate, address token)
-        external
-        pure
-        returns (bytes32 lockID);
-
-    /* getter functions */
-
-    function getPermissionHash(
-        bytes32 eip712TypeHash,
-        address delegate,
-        address token,
-        uint256 amount,
-        uint256 nonce
-    ) external view returns (bytes32 permissionHash);
-
-    function getNonce() external view returns (uint256 nonce);
-
-    function owner() external view returns (address ownerAddress);
-
-    function getLockSetCount() external view returns (uint256 count);
-
-    function getLockAt(uint256 index) external view returns (LockData memory lockData);
-
-    function getBalanceDelegated(address token, address delegate)
-        external
-        view
-        returns (uint256 balance);
-
-    function getBalanceLocked(address token) external view returns (uint256 balance);
-
-    function checkBalances() external view returns (bool validity);
-}
+import {IUniversalVault} from "../interfaces/IUniversalVault.sol";
+import {IVisorService} from "../interfaces/IVisorService.sol";
 
 /// @title Visor
 /// @notice Vault for isolated storage of staking tokens
@@ -102,7 +29,8 @@ contract Visor is
     EIP712("UniversalVault", "1.0.0"),
     ERC1271,
     OwnableERC721,
-    Initializable
+    Initializable,
+    IERC721Receiver
 {
     using SafeMath for uint256;
     using Address for address;
@@ -124,27 +52,91 @@ contract Visor is
         keccak256("Lock(address delegate,address token,uint256 amount,uint256 nonce)");
     bytes32 public constant UNLOCK_TYPEHASH =
         keccak256("Unlock(address delegate,address token,uint256 amount,uint256 nonce)");
-    string public constant VERSION = "VISOR-1.0.0";
+
+    string public constant VERSION = "VISOR-1.2.2";
 
     /* storage */
 
     uint256 private _nonce;
     mapping(bytes32 => LockData) private _locks;
     EnumerableSet.Bytes32Set private _lockSet;
+    string public uri;
+
+    struct Nft {
+      uint256 tokenId; 
+      address nftContract;
+    }
+
+    Nft[] public nfts;
+    mapping(bytes32=>bool) public nftApprovals;
+    mapping(bytes32=>uint256) public erc20Approvals;
+
+    struct TimelockERC20 {
+      address recipient;
+      address token;
+      uint256 amount;
+      uint256 expires;
+    }
+
+    mapping(bytes32=>TimelockERC20) public timelockERC20s; 
+    mapping(address=>bytes32[]) public timelockERC20Keys;
+
+    struct TimelockERC721 {
+      address recipient;
+      address nftContract;
+      uint256 tokenId;
+      uint256 expires;
+    }
+
+    mapping(bytes32=>TimelockERC721) public timelockERC721s; 
+    mapping(address=>bytes32[]) public timelockERC721Keys;
+
+    event AddNftToken(address nftContract, uint256 tokenId);
+    event RemoveNftToken(address nftContract, uint256 tokenId);
+    event TimeLockERC20(address recipient, address token, uint256 amount, uint256 expires);
+    event TimeUnlockERC20(address recipient, address token, uint256 amount, uint256 expires);
+    event TimeLockERC721(address recipient, address nftContract, uint256 tokenId, uint256 expires);
+    event TimeUnlockERC721(address recipient, address nftContract, uint256 tokenId, uint256 expires);
 
     /* initialization function */
 
     function initializeLock() external initializer {}
 
     function initialize() external override initializer {
-        OwnableERC721._setNFT(msg.sender);
+      OwnableERC721._setNFT(msg.sender);
     }
 
     /* ether receive */
 
     receive() external payable {}
 
-    /* internal overrides */
+    /* internal  */
+
+    function _addNft(address nftContract, uint256 tokenId) internal {
+
+      nfts.push(
+        Nft({
+          tokenId: tokenId,
+          nftContract: nftContract
+        })
+      );
+      emit AddNftToken(nftContract, tokenId);
+    }
+
+    function _removeNft(address nftContract, uint256 tokenId) internal {
+      uint256 len = nfts.length;
+      for (uint256 i = 0; i < len; i++) {
+        Nft memory nftInfo = nfts[i];
+        if (nftContract == nftInfo.nftContract && tokenId == nftInfo.tokenId) {
+          if(i != len - 1) {
+            nfts[i] = nfts[len - 1];
+          }
+          nfts.pop();
+          emit RemoveNftToken(nftContract, tokenId);
+          break;
+        }
+      }
+    }
 
     function _getOwner() internal view override(ERC1271) returns (address ownerAddress) {
         return OwnableERC721.owner();
@@ -227,6 +219,33 @@ contract Visor is
         }
         // if sufficient balance or shutdown, return true
         return true;
+    }
+
+    // @notice Get ERC721 from nfts[] by index
+    function getNftById(uint256 i) external view returns (address nftContract, uint256 tokenId) {
+        require(i < nfts.length, "ID overflow");
+        Nft memory ni = nfts[i];
+        nftContract = ni.nftContract;
+        tokenId = ni.tokenId;
+    }
+
+    // @notice Get index of ERC721 in nfts[]
+    function getNftIdByTokenIdAndAddr(address nftContract, uint256 tokenId) external view returns(uint256) {
+        uint256 len = nfts.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (nftContract == nfts[i].nftContract && tokenId == nfts[i].tokenId) {
+                return i;
+            }
+        }
+        require(false, "Token not found");
+    }
+
+    function getTimeLockCount(address token) public view returns(uint256) {
+      return timelockERC20Keys[token].length;
+    }
+
+    function getTimeLockERC721Count(address nftContract) public view returns(uint256) {
+      return timelockERC721Keys[nftContract].length;
     }
 
     /* user functions */
@@ -372,13 +391,17 @@ contract Visor is
         emit RageQuit(delegate, token, notified, error);
     }
 
+    function setURI(string memory _uri) public onlyOwner {
+      uri = _uri;
+    }
+
     /// @notice Transfer ERC20 tokens out of vault
     /// access control: only owner
     /// state machine: when balance >= max(lock) + amount
     /// state scope: none
     /// token transfer: transfer any token
     /// @param token Address of token being transferred
-    /// @param to Address of the recipient
+    /// @param to Address of the to
     /// @param amount Amount of tokens to transfer
     function transferERC20(
         address token,
@@ -394,15 +417,187 @@ contract Visor is
         TransferHelper.safeTransfer(token, to, amount);
     }
 
+    // @notice Approve delegate account to transfer ERC20 tokens out of vault
+    function approveTransferERC20(address token, address delegate, uint256 amount) external onlyOwner {
+      erc20Approvals[keccak256(abi.encodePacked(delegate, token))] = amount;
+    }
+
+    /// @notice Transfer ERC20 tokens out of vault with an approved account
+    /// access control: only approved accounts in erc20Approvals 
+    /// state machine: when balance >= max(lock) + amount
+    /// state scope: none
+    /// token transfer: transfer any token
+    /// @param token Address of token being transferred
+    /// @param to Address of the to
+    /// @param amount Amount of tokens to transfer
+    function delegatedTransferERC20(
+        address token,
+        address to,
+        uint256 amount
+    ) external {
+        if(msg.sender != _getOwner()) {
+          require( 
+            erc20Approvals[keccak256(abi.encodePacked(msg.sender, token))] >= amount,
+            "Account not approved to transfer amount"); 
+        } 
+
+        // check for sufficient balance
+        require(
+            IERC20(token).balanceOf(address(this)) >= getBalanceLocked(token).add(amount),
+            "UniversalVault: insufficient balance"
+        );
+
+        erc20Approvals[keccak256(abi.encodePacked(msg.sender, token))] -= amount;
+         
+        // perform transfer
+        TransferHelper.safeTransfer(token, to, amount);
+    }
+
     /// @notice Transfer ERC20 tokens out of vault
     /// access control: only owner
     /// state machine: when balance >= amount
     /// state scope: none
     /// token transfer: transfer any token
-    /// @param to Address of the recipient
+    /// @param to Address of the to
     /// @param amount Amount of ETH to transfer
     function transferETH(address to, uint256 amount) external payable override onlyOwner {
-        // perform transfer
-        TransferHelper.safeTransferETH(to, amount);
+      // perform transfer
+      TransferHelper.safeTransferETH(to, amount);
     }
+
+    // @notice Approve delegate account to transfer ERC721 token out of vault
+    function approveTransferERC721(
+      address delegate, 
+      address nftContract, 
+      uint256 tokenId
+    ) external onlyOwner {
+      nftApprovals[keccak256(abi.encodePacked(delegate, nftContract, tokenId))] = true;
+    }
+
+    /// @notice Transfer ERC721 out of vault
+    /// access control: only owner or approved
+    /// ERC721 transfer: transfer any ERC721 token
+    /// @param to recipient address 
+    /// @param nftContract address of nft minter 
+    /// @param tokenId token id of the nft instance 
+    function transferERC721(
+        address to,
+        address nftContract,
+        uint256 tokenId
+    ) external {
+        if(msg.sender != _getOwner()) {
+          require( nftApprovals[keccak256(abi.encodePacked(msg.sender, nftContract, tokenId))], "NFT not approved for transfer"); 
+        } 
+        _removeNft(nftContract, tokenId);
+        IERC721(nftContract).safeTransferFrom(address(this), to, tokenId);
+    }
+
+    // @notice Adjust nfts[] on ERC721 token recieved 
+    /// state machine: called on IERC721-safeTransferFrom to vault 
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes calldata) external override returns (bytes4) {
+      _addNft(msg.sender, tokenId);
+      return IERC721Receiver.onERC721Received.selector;
+    }
+
+    // @notice Lock ERC721 in vault until expires, redeemable by recipient
+    function timeLockERC721(address recipient, address nftContract, uint256 tokenId, uint256 expires) public onlyOwner {
+
+      require(
+        expires > block.timestamp, 
+        "Expires must be in future"
+      );
+ 
+      bytes32 key = keccak256(abi.encodePacked(recipient, nftContract, tokenId, expires)); 
+
+      require(
+        timelockERC721s[key].expires == 0,
+        "TimelockERC721 already exists"
+      );
+     
+      timelockERC721s[key] = TimelockERC721({
+          recipient: recipient,
+          nftContract: nftContract,
+          tokenId: tokenId,
+          expires: expires
+      });
+
+      timelockERC721Keys[nftContract].push(key);
+
+      IERC721(nftContract).safeTransferFrom(msg.sender, address(this), tokenId);
+      emit TimeLockERC20(recipient, nftContract, tokenId, expires);
+    }
+
+    // @notice Withdraw ERC721 in vault post expires by recipient
+    function timeUnlockERC721(address recipient, address nftContract, uint256 tokenId, uint256 expires) public {
+
+      bytes32 key = keccak256(abi.encodePacked(recipient, nftContract, tokenId, expires)); 
+      require(
+        timelockERC721s[key].expires <= block.timestamp,
+        "Not expired yet"
+      );
+
+      require(msg.sender == timelockERC721s[key].recipient, "Not recipient");
+
+      _removeNft(nftContract, tokenId);
+      delete timelockERC721s[key];
+
+      IERC721(nftContract).safeTransferFrom(address(this), msg.sender, tokenId);
+      emit TimeUnlockERC721(recipient, nftContract, tokenId, expires);
+    }
+
+    // @notice Lock ERC720 amount in vault until expires, redeemable by recipient
+    // TODO replace params with keccak256 bytes32
+    function timeLockERC20(address recipient, address token, uint256 amount, uint256 expires) public onlyOwner {
+
+      require(
+        IERC20(token).allowance(msg.sender, address(this)) >= amount, 
+        "Amount not approved"
+      );
+
+      require(
+        expires > block.timestamp, 
+        "Expires must be in future"
+      );
+
+      bytes32 key = keccak256(abi.encodePacked(recipient, token, amount, expires)); 
+
+      require(
+        timelockERC20s[key].expires == 0,
+        "TimelockERC20 already exists"
+      );
+    
+      timelockERC20s[key] = TimelockERC20({
+          recipient: recipient,
+          token: token,
+          amount: amount,
+          expires: expires
+      });
+
+      timelockERC20Keys[token].push(key);
+      IERC20(token).transferFrom(msg.sender, address(this), amount);
+      emit TimeLockERC20(recipient, token, amount, expires);
+    }
+
+    // @notice Withdraw ERC20 from vault post expires by recipient
+    function timeUnlockERC20(address recipient, address token, uint256 amount, uint256 expires) public {
+
+      require(
+        IERC20(token).balanceOf(address(this)) >= getBalanceLocked(token).add(amount),
+        "Insufficient balance"
+      );
+
+      bytes32 key = keccak256(abi.encodePacked(recipient, token, amount, expires)); 
+      require(
+        timelockERC20s[key].expires <= block.timestamp,
+        "Not expired yet"
+      );
+
+      require(msg.sender == timelockERC20s[key].recipient, "Not recipient");
+      
+      delete timelockERC20s[key];
+
+      TransferHelper.safeTransfer(token, recipient, amount);
+      emit TimeUnlockERC20(recipient, token, amount, expires);
+    }
+
 }
